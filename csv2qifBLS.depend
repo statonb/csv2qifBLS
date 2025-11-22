@@ -1,0 +1,6 @@
+# depslib dependency file v1.0
+1763831528 source:/mnt/omv1share1/Workspace/csv2qifBLS/stctok.cpp
+	<string.h>
+	<stdlib.h>
+	<stdio.h>
+
