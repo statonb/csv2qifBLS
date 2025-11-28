@@ -9,14 +9,21 @@
 #include "stctok.h"
 
 #define MAX_LINE 4096
-#define MAX_FIELDS  16
+#define MAX_FIELDS  32
 
-const char *SW_VERSION =    "1.00";
-const char *SW_DATE =       "2025-11-22";
+const char *SW_VERSION =    "1.01";
+const char *SW_DATE =       "2025-11-28";
 
 const char *DELIMITER_STRING =  ",";
 
 #define COLLAPSE_FLAG   (0)
+
+typedef enum
+{
+    UNKNOWN_BANK_FORMAT
+    , BOA_FORMAT
+    , FIDELITY_FORMAT
+}   bankFormat_t;
 
 // Remove surrounding quotes from a field, if present
 void strip_quotes(char *s) {
@@ -37,6 +44,17 @@ void remove_commas(char *s) {
         src++;
     }
     *dst = '\0';
+}
+
+char *strcasestr_simple(const char *hay, const char *needle) {
+    size_t nlen = strlen(needle);
+    if (nlen == 0) return (char *)hay;
+    for (; *hay; hay++) {
+        if (tolower((unsigned char)*hay) == tolower((unsigned char)*needle)) {
+            if (strncasecmp(hay, needle, nlen) == 0) return (char *)hay;
+        }
+    }
+    return NULL;
 }
 
 // Parse a CSV line into fields handling quoted fields and empty fields.
@@ -94,6 +112,24 @@ int parse_csv_line(const char *line, char fields[][MAX_LINE], int max_fields) {
     return fi;
 }
 
+bankFormat_t string2bankFormat(const char *s)
+{
+    bankFormat_t    ret = UNKNOWN_BANK_FORMAT;
+
+    if (strcasestr_simple(s, "boa"))
+    {
+        ret = BOA_FORMAT;
+    }
+    else if (strcasestr_simple(s, "fid"))
+    {
+        ret = FIDELITY_FORMAT;
+    }
+    else
+    {
+        ret = UNKNOWN_BANK_FORMAT;
+    }
+    return ret;
+}
 void usage(const char *prog, const char *extraLine = (const char *)(NULL));
 
 void usage(const char *prog, const char *extraLine)
@@ -105,6 +141,10 @@ void usage(const char *prog, const char *extraLine)
     fprintf(stderr, "-o --output filename      output .qif file.\n");
     fprintf(stderr, "                          Filename will be generated from input filename\n");
     fprintf(stderr, "                          if not provided.\n");
+    fprintf(stderr, "-f --format Bank          Different banks format CSV files differently.\n");
+    fprintf(stderr, "                          Possible selections are as follows:\n");
+    fprintf(stderr, "                             BoA\n");
+    fprintf(stderr, "                             Fidelity\n");
     fprintf(stderr, "-q --quiet                Quiet running (or decrease verbosity).\n");
     fprintf(stderr, "-v --verbose              Increase verbosity\n");
     if (extraLine) fprintf(stderr, "\n%s\n", extraLine);
@@ -122,13 +162,14 @@ int main(int argc, char *argv[])
     FILE                *fpOut;
     bool                inTransactionSection = false;
     char                line[MAX_LINE];
-    char                *ptr;
     char                date[MAX_LINE];
     char                amt[MAX_LINE];
     char                desc[MAX_LINE];
+    char                cashBal[MAX_LINE];
     char                fields[MAX_FIELDS][MAX_LINE];
     int                 numTransactions = 0;
     int                 verbosity = 1;
+    bankFormat_t        bankFormat = BOA_FORMAT;
 
     inFileName[0] = '\0';
     outFileName[0] = '\0';
@@ -137,6 +178,7 @@ int main(int argc, char *argv[])
     {
         {"input",       required_argument,  0,      'i'}
         ,{"output",     required_argument,  0,      'o'}
+        ,{"format",     required_argument,  0,      'f'}
         ,{"quiet",      no_argument,        0,      'q'}
         ,{"verbose",    no_argument,        0,      'v'}
         ,{0,0,0,0}
@@ -145,7 +187,7 @@ int main(int argc, char *argv[])
     while (1)
     {
         int optionIndex = 0;
-        opt = getopt_long(argc, argv, "i:o:qv", longOptions, &optionIndex);
+        opt = getopt_long(argc, argv, "i:o:f:qv", longOptions, &optionIndex);
 
         if (-1 == opt) break;
 
@@ -156,6 +198,9 @@ int main(int argc, char *argv[])
             break;
         case 'o':
             strcpy(outFileName, optarg);
+            break;
+        case 'f':
+            bankFormat = string2bankFormat(optarg);
             break;
         case 'q':
             --verbosity;
@@ -175,7 +220,17 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    // strcpy(inFileName, "/home/bruno/Downloads/stmt.csv");
+    if (UNKNOWN_BANK_FORMAT == bankFormat)
+    {
+        usage(basename(argv[0]), "Unknown Bank Format");
+        return -6;
+    }
+    else
+    {
+        printf("Bank Format: %d\n", (int)bankFormat);
+    }
+
+    strcpy(inFileName, "/home/bruno/Downloads/test.csv");
     if ('\0' == inFileName[0])
     {
         usage(basename(argv[0]), "Input filename required");
@@ -245,25 +300,44 @@ int main(int argc, char *argv[])
 
         if (false == inTransactionSection)
         {
-            if (strncmp(line, "Date,", 5) == 0) {
-                inTransactionSection = true;
+            if (BOA_FORMAT == bankFormat)
+            {
+                if (strncmp(line, "Date,", 5) == 0) {
+                    inTransactionSection = true;
+                }
+            }
+            else if (FIDELITY_FORMAT == bankFormat)
+            {
+                if (strncmp(line, "Run Date,", 9) == 0) {
+                    inTransactionSection = true;
+                }
             }
             continue;
         }
 
         parse_csv_line(line, fields, MAX_FIELDS);
 
-        // This is my way using stctok but it doesn't handle commas within quoted fields
-        ptr = line;
-        ptr = stctok(ptr, date, sizeof(date), (char *)DELIMITER_STRING, COLLAPSE_FLAG);
-        ptr = stctok(ptr, desc, sizeof(desc), (char *)DELIMITER_STRING, COLLAPSE_FLAG);
-        ptr = stctok(ptr, amt, sizeof(amt), (char *)DELIMITER_STRING, COLLAPSE_FLAG);
         //
         // Use the parse_csv_line results
         //
-        strcpy(date, fields[0]);
-        strcpy(desc, fields[1]);
-        strcpy(amt, fields[2]);
+        if (BOA_FORMAT == bankFormat)
+        {
+            strcpy(date, fields[0]);
+            strcpy(desc, fields[1]);
+            strcpy(amt, fields[2]);
+        }
+        else if (FIDELITY_FORMAT == bankFormat)
+        {
+            strcpy(cashBal, fields[15]);
+            strip_quotes(cashBal);
+            if (strncasecmp(cashBal, "Processing", 10) == 0) {
+                // Skip transactions that are still in process
+                continue;
+            }
+            strcpy(date, fields[0]);
+            strcpy(desc, fields[1]);
+            strcpy(amt, fields[14]);
+        }
 
         strip_quotes(date);
         strip_quotes(desc);
