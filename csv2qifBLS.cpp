@@ -342,21 +342,22 @@ int main(int argc, char *argv[])
         strip_quotes(date);
         strip_quotes(desc);
         strip_quotes(amt);
+        remove_commas(amt);
+
+        double amtd = strtod(amt, NULL);
 
         if  (   (verbosity >= 2)
              && (amt[0] != '\0')
             )
         {
-            printf("%s\t%.16s\t$%s\n", date, desc, amt);
+            printf("%s\t%.16s\t$%.2lf\n", date, desc, amtd);
         }
-
-        remove_commas(amt);
 
         if (amt[0] == '\0') continue;
 
         fprintf(fpOut, "D%s\n", date);
         fprintf(fpOut, "P%s\n", desc);
-        fprintf(fpOut, "T%s\n", amt);
+        fprintf(fpOut, "T%.2lf\n", amtd);
         fprintf(fpOut, "C*\n");
         fprintf(fpOut, "^\n");
         ++numTransactions;
