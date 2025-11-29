@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
+
+# Set compilers (must be before project() command)
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
+
 project(csv2qifBLS VERSION 1.0 LANGUAGES CXX)
 
 # Set C++ standard
