@@ -230,7 +230,7 @@ int main(int argc, char *argv[])
         printf("Bank Format: %d\n", (int)bankFormat);
     }
 
-    strcpy(inFileName, "/home/bruno/Downloads/test.csv");
+    // strcpy(inFileName, "/home/bruno/Downloads/test.csv");
     if ('\0' == inFileName[0])
     {
         usage(basename(argv[0]), "Input filename required");
