@@ -6,13 +6,14 @@
 #include <string.h>
 #include <ctype.h>
 #include <getopt.h>
-#include "stctok.h"
+#include "mmSymbols.h"
+#include "cusipBankMap.h"
 
 #define MAX_LINE 4096
 #define MAX_FIELDS  32
 
-const char *SW_VERSION =    "1.01";
-const char *SW_DATE =       "2025-11-28";
+const char *SW_VERSION =    "1.02";
+const char *SW_DATE =       "2025-11-29";
 
 const char *DELIMITER_STRING =  ",";
 
@@ -130,6 +131,7 @@ bankFormat_t string2bankFormat(const char *s)
     }
     return ret;
 }
+
 void usage(const char *prog, const char *extraLine = (const char *)(NULL));
 
 void usage(const char *prog, const char *extraLine)
@@ -150,6 +152,52 @@ void usage(const char *prog, const char *extraLine)
     if (extraLine) fprintf(stderr, "\n%s\n", extraLine);
 }
 
+void modifyCDDescription(char *desc, const char *bankName)
+{
+    if (strncasecmp(desc, "INTEREST", 8) == 0)
+    {
+        strcpy(desc, bankName);
+        strcat(desc, " - Interest");
+    }
+    else if ((strncasecmp(desc, "REDEMPTION", 10) == 0))
+    {
+        strcpy(desc, bankName);
+        strcat(desc, " - Redemption");
+    }
+}
+
+void modifyMMDescription(char *desc, char *symbol)
+{
+    if (strncasecmp(desc, "DIVIDEND", 8) == 0)
+    {
+        strcpy(desc, symbol);
+        strcat(desc, " Dividend");
+    }
+    else if (   (strncasecmp(desc, "REINVESTMENT", 12) == 0)
+             || (strncasecmp(desc, "YOU BOUGHT", 10) == 0)
+            )
+    {
+        strcpy(desc, symbol);
+        strcat(desc, " Purchase");
+    }
+    else if ((strncasecmp(desc, "YOU SOLD", 8) == 0))
+    {
+        strcpy(desc, symbol);
+        strcat(desc, " Sale");
+    }
+}
+
+void modifyTBillDescription(char *desc)
+{
+    if (strncasecmp(desc, "YOU BOUGHT", 10) == 0)
+    {
+        strcpy(desc, "T-Bill Purchase");
+    }
+    else if ((strncasecmp(desc, "REDEMPTION", 10) == 0))
+    {
+        strcpy(desc, "T-Bill Redemption");
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -165,11 +213,14 @@ int main(int argc, char *argv[])
     char                date[MAX_LINE];
     char                amt[MAX_LINE];
     char                desc[MAX_LINE];
+    char                symbol[MAX_LINE];
     char                cashBal[MAX_LINE];
     char                fields[MAX_FIELDS][MAX_LINE];
     int                 numTransactions = 0;
     int                 verbosity = 1;
     bankFormat_t        bankFormat = BOA_FORMAT;
+    MoneyMarketSymbols  mmSymbols;
+    CUSIPBankMap        cusip2bank;
 
     inFileName[0] = '\0';
     outFileName[0] = '\0';
@@ -325,7 +376,8 @@ int main(int argc, char *argv[])
             strcpy(date, fields[0]);
             strcpy(desc, fields[1]);
             strcpy(amt, fields[2]);
-        }
+            strip_quotes(desc);
+    }
         else if (FIDELITY_FORMAT == bankFormat)
         {
             strcpy(cashBal, fields[15]);
@@ -336,11 +388,24 @@ int main(int argc, char *argv[])
             }
             strcpy(date, fields[0]);
             strcpy(desc, fields[1]);
+            strcpy(symbol, fields[2]);
             strcpy(amt, fields[14]);
+
+            // Determine if the description needs to be modified
+            strip_quotes(desc);
+            strip_quotes(symbol);
+            if (mmSymbols.contains(symbol)) {
+                modifyMMDescription(desc, symbol);
+            }
+            else if (strncasecmp(symbol, "912797", 6) == 0) {
+                modifyTBillDescription(desc);
+            }
+            else if (cusip2bank.contains(symbol)) {
+                modifyCDDescription(desc, cusip2bank.getBankNameC(symbol));
+            }
         }
 
         strip_quotes(date);
-        strip_quotes(desc);
         strip_quotes(amt);
         remove_commas(amt);
 

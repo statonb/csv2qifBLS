@@ -40,9 +40,9 @@ OBJDIR_RELEASE = obj/Release
 DEP_RELEASE = 
 OUT_RELEASE = bin/Release/csv2qifBLS
 
-OBJ_DEBUG = $(OBJDIR_DEBUG)/csv2qifBLS.o $(OBJDIR_DEBUG)/stctok.o
+OBJ_DEBUG = $(OBJDIR_DEBUG)/csv2qifBLS.o $(OBJDIR_DEBUG)/cusipBankMap.o $(OBJDIR_DEBUG)/mmSymbols.o
 
-OBJ_RELEASE = $(OBJDIR_RELEASE)/csv2qifBLS.o $(OBJDIR_RELEASE)/stctok.o
+OBJ_RELEASE = $(OBJDIR_RELEASE)/csv2qifBLS.o $(OBJDIR_RELEASE)/cusipBankMap.o $(OBJDIR_RELEASE)/mmSymbols.o
 
 all: debug release
 
@@ -62,8 +62,11 @@ out_debug: before_debug $(OBJ_DEBUG) $(DEP_DEBUG)
 $(OBJDIR_DEBUG)/csv2qifBLS.o: csv2qifBLS.cpp
 	$(CXX) $(CFLAGS_DEBUG) $(INC_DEBUG) -c csv2qifBLS.cpp -o $(OBJDIR_DEBUG)/csv2qifBLS.o
 
-$(OBJDIR_DEBUG)/stctok.o: stctok.cpp
-	$(CC) $(CFLAGS_DEBUG) $(INC_DEBUG) -c stctok.cpp -o $(OBJDIR_DEBUG)/stctok.o
+$(OBJDIR_DEBUG)/cusipBankMap.o: cusipBankMap.cpp
+	$(CXX) $(CFLAGS_DEBUG) $(INC_DEBUG) -c cusipBankMap.cpp -o $(OBJDIR_DEBUG)/cusipBankMap.o
+
+$(OBJDIR_DEBUG)/mmSymbols.o: mmSymbols.cpp
+	$(CXX) $(CFLAGS_DEBUG) $(INC_DEBUG) -c mmSymbols.cpp -o $(OBJDIR_DEBUG)/mmSymbols.o
 
 clean_debug: 
 	rm -f $(OBJ_DEBUG) $(OUT_DEBUG)
@@ -84,8 +87,11 @@ out_release: before_release $(OBJ_RELEASE) $(DEP_RELEASE)
 $(OBJDIR_RELEASE)/csv2qifBLS.o: csv2qifBLS.cpp
 	$(CXX) $(CFLAGS_RELEASE) $(INC_RELEASE) -c csv2qifBLS.cpp -o $(OBJDIR_RELEASE)/csv2qifBLS.o
 
-$(OBJDIR_RELEASE)/stctok.o: stctok.cpp
-	$(CC) $(CFLAGS_RELEASE) $(INC_RELEASE) -c stctok.cpp -o $(OBJDIR_RELEASE)/stctok.o
+$(OBJDIR_RELEASE)/cusipBankMap.o: cusipBankMap.cpp
+	$(CXX) $(CFLAGS_RELEASE) $(INC_RELEASE) -c cusipBankMap.cpp -o $(OBJDIR_RELEASE)/cusipBankMap.o
+
+$(OBJDIR_RELEASE)/mmSymbols.o: mmSymbols.cpp
+	$(CXX) $(CFLAGS_RELEASE) $(INC_RELEASE) -c mmSymbols.cpp -o $(OBJDIR_RELEASE)/mmSymbols.o
 
 clean_release: 
 	rm -f $(OBJ_RELEASE) $(OUT_RELEASE)
