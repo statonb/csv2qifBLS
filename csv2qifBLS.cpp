@@ -12,8 +12,8 @@
 #define MAX_LINE 4096
 #define MAX_FIELDS  32
 
-const char *SW_VERSION =    "1.02";
-const char *SW_DATE =       "2025-11-29";
+const char *SW_VERSION =    "1.03";
+const char *SW_DATE =       "2025-11-30";
 
 const char *DELIMITER_STRING =  ",";
 
@@ -24,6 +24,8 @@ typedef enum
     UNKNOWN_BANK_FORMAT
     , BOA_FORMAT
     , FIDELITY_FORMAT
+    , SCHWAB_BANK_FORMAT
+    , SCHWAB_BROKERAGE_FORMAT
 }   bankFormat_t;
 
 // Remove surrounding quotes from a field, if present
@@ -35,11 +37,30 @@ void strip_quotes(char *s) {
     }
 }
 
-// Remove all commas from a number field
-void remove_commas(char *s) {
+// Remove all quotes from a line.
+// This will remove quotes from within a field
+// so only do this when trying to find the
+// column header line 
+void remove_all_quotes(char *s) {
     char *dst = s, *src = s;
     while (*src) {
-        if (*src != ',') {
+        if  (*src != '"')
+        {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst = '\0';
+}
+
+// Remove all commas from a number field
+void remove_commas_and_dollars(char *s) {
+    char *dst = s, *src = s;
+    while (*src) {
+        if  (   (*src != ',')
+             && (*src != '$')
+            )
+        {
             *dst++ = *src;
         }
         src++;
@@ -125,6 +146,14 @@ bankFormat_t string2bankFormat(const char *s)
     {
         ret = FIDELITY_FORMAT;
     }
+    else if (strcasestr_simple(s, "schwabbank"))
+    {
+        ret = SCHWAB_BANK_FORMAT;
+    }
+    else if (strcasestr_simple(s, "schwabbrok"))
+    {
+        ret = SCHWAB_BROKERAGE_FORMAT;
+    }
     else
     {
         ret = UNKNOWN_BANK_FORMAT;
@@ -147,6 +176,8 @@ void usage(const char *prog, const char *extraLine)
     fprintf(stderr, "                          Possible selections are as follows:\n");
     fprintf(stderr, "                             BoA\n");
     fprintf(stderr, "                             Fidelity\n");
+    fprintf(stderr, "                             SchwabBank\n");
+    fprintf(stderr, "                             SchwabBrokerage\n");
     fprintf(stderr, "-q --quiet                Quiet running (or decrease verbosity).\n");
     fprintf(stderr, "-v --verbose              Increase verbosity\n");
     if (extraLine) fprintf(stderr, "\n%s\n", extraLine);
@@ -168,19 +199,26 @@ void modifyCDDescription(char *desc, const char *bankName)
 
 void modifyMMDescription(char *desc, char *symbol)
 {
-    if (strncasecmp(desc, "DIVIDEND", 8) == 0)
+    if  (   (strncasecmp(desc, "DIVIDEND", 8) == 0)
+         || (strncasecmp(desc, "Reinvest Dividend", 17) == 0)
+         || (strncasecmp(desc, "Cash Dividend", 13) == 0)
+        )
     {
         strcpy(desc, symbol);
         strcat(desc, " Dividend");
     }
     else if (   (strncasecmp(desc, "REINVESTMENT", 12) == 0)
              || (strncasecmp(desc, "YOU BOUGHT", 10) == 0)
+             || (strncasecmp(desc, "Reinvest Shares", 15) == 0)
+             || (strncasecmp(desc, "Buy", 3) == 0)
             )
     {
         strcpy(desc, symbol);
         strcat(desc, " Purchase");
     }
-    else if ((strncasecmp(desc, "YOU SOLD", 8) == 0))
+    else if (   (strncasecmp(desc, "YOU SOLD", 8) == 0)
+             || (strncasecmp(desc, "Sell", 4) == 0)
+            )
     {
         strcpy(desc, symbol);
         strcat(desc, " Sale");
@@ -217,8 +255,9 @@ int main(int argc, char *argv[])
     char                cashBal[MAX_LINE];
     char                fields[MAX_FIELDS][MAX_LINE];
     int                 numTransactions = 0;
+    double              withdrawModifier = 1.0;
     int                 verbosity = 1;
-    bankFormat_t        bankFormat = BOA_FORMAT;
+    bankFormat_t        bankFormat = UNKNOWN_BANK_FORMAT;
     MoneyMarketSymbols  mmSymbols;
     CUSIPBankMap        cusip2bank;
 
@@ -281,7 +320,7 @@ int main(int argc, char *argv[])
         printf("Bank Format: %d\n", (int)bankFormat);
     }
 
-    // strcpy(inFileName, "/home/bruno/Downloads/test.csv");
+    // strcpy(inFileName, "/home/bruno/Downloads/schwab.csv");
     if ('\0' == inFileName[0])
     {
         usage(basename(argv[0]), "Input filename required");
@@ -351,7 +390,11 @@ int main(int argc, char *argv[])
 
         if (false == inTransactionSection)
         {
-            if (BOA_FORMAT == bankFormat)
+            remove_all_quotes(line);
+            if  (   (BOA_FORMAT == bankFormat)
+                 || (SCHWAB_BANK_FORMAT == bankFormat)
+                 || (SCHWAB_BROKERAGE_FORMAT == bankFormat)
+                )
             {
                 if (strncmp(line, "Date,", 5) == 0) {
                     inTransactionSection = true;
@@ -374,10 +417,11 @@ int main(int argc, char *argv[])
         if (BOA_FORMAT == bankFormat)
         {
             strcpy(date, fields[0]);
+            strip_quotes(date);
             strcpy(desc, fields[1]);
-            strcpy(amt, fields[2]);
             strip_quotes(desc);
-    }
+            strcpy(amt, fields[2]);
+        }
         else if (FIDELITY_FORMAT == bankFormat)
         {
             strcpy(cashBal, fields[15]);
@@ -387,6 +431,11 @@ int main(int argc, char *argv[])
                 continue;
             }
             strcpy(date, fields[0]);
+            strip_quotes(date);
+            if (isdigit(date[0]) == 0) {
+                // Skip lines without a valid date
+                continue;
+            }
             strcpy(desc, fields[1]);
             strcpy(symbol, fields[2]);
             strcpy(amt, fields[14]);
@@ -404,21 +453,67 @@ int main(int argc, char *argv[])
                 modifyCDDescription(desc, cusip2bank.getBankNameC(symbol));
             }
         }
+        else if (SCHWAB_BANK_FORMAT == bankFormat)
+        {
+            strcpy(date, fields[0]);
+            strip_quotes(date);
 
-        strip_quotes(date);
+            strcpy(desc, fields[4]);
+            strip_quotes(desc);
+
+            // This is the Withdraw filed in Schwab.  It might be blank
+            strcpy(amt, fields[5]);
+            if (amt[0] == '\0')
+            {
+                strcpy(amt, fields[6]);     // Try the Deposit field instead
+                withdrawModifier = 1.0;
+            }
+            else
+            {
+                // Withdraw field had an entry.
+                // Schwab lists this as a positive number, but
+                // QIF needs it to be negative.
+                withdrawModifier = -1.0;
+            }
+
+        }
+        else if (SCHWAB_BROKERAGE_FORMAT == bankFormat)
+        {
+            strcpy(date, fields[0]);
+            strip_quotes(date);
+            // Remove any "as of ..." portion of this field
+            cp = strstr(date, " as of");
+            if (cp) *cp = '\0';
+
+            strcpy(desc, fields[3]);
+            strcpy(symbol, fields[2]);
+            strcpy(amt, fields[7]);
+
+            // Determine if the description needs to be modified
+            strip_quotes(desc);
+            strip_quotes(symbol);
+            if (mmSymbols.contains(symbol)) {
+                // Replace the description with the action
+                strcpy(desc, fields[1]);
+                strip_quotes(desc);
+                modifyMMDescription(desc, symbol);
+            }
+
+        }
+
         strip_quotes(amt);
-        remove_commas(amt);
+        remove_commas_and_dollars(amt);
 
-        double amtd = strtod(amt, NULL);
+        if (amt[0] == '\0') continue;
+
+        double amtd = strtod(amt, NULL) * withdrawModifier;
 
         if  (   (verbosity >= 2)
-             && (amt[0] != '\0')
+             && (amt[0] != '\0')    // Wouldn't be here if amt was null, but check anyway
             )
         {
             printf("%s\t%.16s\t$%.2lf\n", date, desc, amtd);
         }
-
-        if (amt[0] == '\0') continue;
 
         fprintf(fpOut, "D%s\n", date);
         fprintf(fpOut, "P%s\n", desc);

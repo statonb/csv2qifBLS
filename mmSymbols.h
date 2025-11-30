@@ -11,7 +11,7 @@ private:
 public:
   MoneyMarketSymbols() {
         // Initialize your symbols
-        symbols = {"FDLXX", "SPAXX", "FDRXX", "SPRXX", "FZFXX"};
+        symbols = {"FDLXX", "SPAXX", "FDRXX", "SPRXX", "FZFXX", "SNSXX", "SNVXX"};
     }  
 
     bool contains(const std::string& symbol) const;
