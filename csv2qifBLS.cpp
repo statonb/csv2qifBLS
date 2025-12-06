@@ -12,8 +12,8 @@
 #define MAX_LINE 4096
 #define MAX_FIELDS  32
 
-const char *SW_VERSION =    "1.03";
-const char *SW_DATE =       "2025-11-30";
+const char *SW_VERSION =    "1.04";
+const char *SW_DATE =       "2025-12-06";
 
 const char *DELIMITER_STRING =  ",";
 
@@ -23,6 +23,7 @@ typedef enum
 {
     UNKNOWN_BANK_FORMAT
     , BOA_FORMAT
+    , CITI_FORMAT
     , FIDELITY_FORMAT
     , SCHWAB_BANK_FORMAT
     , SCHWAB_BROKERAGE_FORMAT
@@ -142,6 +143,10 @@ bankFormat_t string2bankFormat(const char *s)
     {
         ret = BOA_FORMAT;
     }
+    else if (strcasestr_simple(s, "citi"))
+    {
+        ret = CITI_FORMAT;
+    }
     else if (strcasestr_simple(s, "fid"))
     {
         ret = FIDELITY_FORMAT;
@@ -175,6 +180,7 @@ void usage(const char *prog, const char *extraLine)
     fprintf(stderr, "-f --format Bank          Different banks format CSV files differently.\n");
     fprintf(stderr, "                          Possible selections are as follows:\n");
     fprintf(stderr, "                             BoA\n");
+    fprintf(stderr, "                             Citi\n");
     fprintf(stderr, "                             Fidelity\n");
     fprintf(stderr, "                             SchwabBank\n");
     fprintf(stderr, "                             SchwabBrokerage\n");
@@ -391,20 +397,31 @@ int main(int argc, char *argv[])
         if (false == inTransactionSection)
         {
             remove_all_quotes(line);
-            if  (   (BOA_FORMAT == bankFormat)
-                 || (SCHWAB_BANK_FORMAT == bankFormat)
-                 || (SCHWAB_BROKERAGE_FORMAT == bankFormat)
-                )
+            switch (bankFormat)
             {
-                if (strncmp(line, "Date,", 5) == 0) {
-                    inTransactionSection = true;
-                }
-            }
-            else if (FIDELITY_FORMAT == bankFormat)
-            {
-                if (strncmp(line, "Run Date,", 9) == 0) {
-                    inTransactionSection = true;
-                }
+                case BOA_FORMAT:
+                case SCHWAB_BANK_FORMAT:
+                case SCHWAB_BROKERAGE_FORMAT:
+                    if (strncmp(line, "Date,", 5) == 0) {
+                        inTransactionSection = true;
+                    }
+                    break;
+                case FIDELITY_FORMAT:
+                    if (strncmp(line, "Run Date,", 9) == 0) {
+                        inTransactionSection = true;
+                    }
+                    break;
+                case CITI_FORMAT:
+                    if (strncmp(line, "Status,", 6) == 0) {
+                        inTransactionSection = true;
+                    }
+                    break;
+                default:
+                    usage(basename(argv[0]), "Internal error with bank format");
+                    fclose(fpIn);
+                    fclose(fpOut);
+                    return -7;
+                    break;
             }
             continue;
         }
@@ -452,6 +469,30 @@ int main(int argc, char *argv[])
             else if (cusip2bank.contains(symbol)) {
                 modifyCDDescription(desc, cusip2bank.getBankNameC(symbol));
             }
+        }
+        else if (CITI_FORMAT == bankFormat)
+        {
+            strcpy(date, fields[1]);
+            strip_quotes(date);
+
+            strcpy(desc, fields[2]);
+            strip_quotes(desc);
+
+            // This is the debit field in Citi.  It might be blank
+            strcpy(amt, fields[3]);
+            if (amt[0] == '\0')
+            {
+                strcpy(amt, fields[4]);     // Try the Credit field instead
+                withdrawModifier = 1.0;
+            }
+            else
+            {
+                // Withdraw field had an entry.
+                // Citi lists this as a positive number, but
+                // QIF needs it to be negative.
+                withdrawModifier = -1.0;
+            }
+
         }
         else if (SCHWAB_BANK_FORMAT == bankFormat)
         {
